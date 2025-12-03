@@ -134,22 +134,27 @@ class Qwen2VLProcessor(ProcessorMixin):
 
         # if not isinstance(text, list):
         #     text = [text]
+        # if not isinstance(text, list):
+        #     text = [text]
+        # else:
+        #     # ==============================================================================
+        #     # FIX: Create a copy of the list to avoid side effects on the input list
+        #     # ==============================================================================
+        #     text = list(text)
+        
         if not isinstance(text, list):
             text = [text]
-        else:
-            # ==============================================================================
-            # FIX: Create a copy of the list to avoid side effects on the input list
-            # ==============================================================================
-            text = list(text)
-            
+
+        text = text.copy()  # below lines change text in-place
+
         if image_grid_thw is not None:
             merge_length = self.image_processor.merge_size**2
             index = 0
-            for i in range(len(text)): # ´Ë´¦iÖ¸µÚi¸öÎÄ±¾£¬¼´batch_size
+            for i in range(len(text)): # ï¿½Ë´ï¿½iÖ¸ï¿½ï¿½iï¿½ï¿½ï¿½Ä±ï¿½ï¿½ï¿½ï¿½ï¿½batch_size
                 while "<|image_pad|>" in text[i]:
                     text[i] = text[i].replace(
                         "<|image_pad|>", "<|placeholder|>" * (image_grid_thw[index].prod() // merge_length), 1
-                    ) # Ö»Ìæ»»µÚÒ»¸ö
+                    ) # Ö»ï¿½æ»»ï¿½ï¿½Ò»ï¿½ï¿½
                     index += 1
                 text[i] = text[i].replace("<|placeholder|>", "<|image_pad|>")
 

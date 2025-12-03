@@ -1141,10 +1141,10 @@ class IPCV_ViT(Qwen2VisionTransformerPretrainedModel):
         # hidden_states [grid_t * grid_h * grid_w, 
         #       channel * self.temporal_patch_size * self.patch_size * self.patch_size] 
         # grid_thw[batch_size, 3(t,h,w)]
-        eval_logger.info(f"IPCV_ViT forward called with hidden_states shape: {hidden_states.shape}, grid_thw shape: {grid_thw.shape}, grid_thw: {grid_thw}")
-        eval_logger.info(f"inputs_downsample pixel_values shape: {inputs_downsample['pixel_values'].shape}, image_grid_thw shape: {inputs_downsample['image_grid_thw'].shape}, grid_thw: {inputs_downsample['image_grid_thw']}")
+        # eval_logger.info(f"IPCV_ViT forward called with hidden_states shape: {hidden_states.shape}, grid_thw shape: {grid_thw.shape}, grid_thw: {grid_thw}")
+        # eval_logger.info(f"inputs_downsample pixel_values shape: {inputs_downsample['pixel_values'].shape}, image_grid_thw shape: {inputs_downsample['image_grid_thw'].shape}, grid_thw: {inputs_downsample['image_grid_thw']}")
+        
         hidden_states = self.patch_embed(hidden_states) # [seq_len, embed_dim]
-
         rotary_pos_emb = self.rot_pos_emb(grid_thw) # [seq_len, rot_pos_embed_dim]
         # hidden_states_downsample = inputs_downsample['pixel_values']
 
@@ -1572,8 +1572,8 @@ class Qwen2VLModel_Sparse(Qwen2VLModel):
         cache_position: Optional[torch.LongTensor] = None,
         **kwargs,
     ) -> Union[Tuple, BaseModelOutputWithPast]:
-        inputs_downsample = kwargs.get("inputs_downsample")
-        print("DEBUG: inputs_downsample content:", inputs_downsample)
+        # inputs_downsample = kwargs.get("inputs_downsample")
+        # print("DEBUG: inputs_downsample content:", inputs_downsample)
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
@@ -2114,6 +2114,8 @@ class Qwen2VLForConditionalGeneration(Qwen2VLPreTrainedModel):
         # 从模型属性中获取 inputs_downsample
         # ==============================================================================
         inputs_downsample = getattr(self, 'inputs_downsample', None)
+
+        # eval_logger.info(f"Qwen2VLForConditionalGeneration forward 在这里运行")
         # print("DEBUG: inputs_downsample content:", inputs_downsample)
         # ==============================================================================
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
@@ -2129,77 +2131,169 @@ class Qwen2VLForConditionalGeneration(Qwen2VLPreTrainedModel):
                 # num_tokens_prev = input_ids.shape[1]
                 pixel_values = pixel_values.type(self.visual.get_dtype())
                 
-                if inputs_downsample is not None and 'pixel_values' in inputs_downsample:
-                    inputs_downsample['pixel_values'] = inputs_downsample['pixel_values'].to(
+
+                inputs_downsample['pixel_values'] = inputs_downsample['pixel_values'].to(
                         device=pixel_values.device, 
                         dtype=self.visual.get_dtype()
                     )
                 
                 image_embeds, image_embeds_downsample = self.visual(pixel_values, grid_thw=image_grid_thw, inputs_downsample=inputs_downsample)
-                # eval_logger.info("image_embeds shape: {}", image_embeds.shape)
-                # eval_logger.info("image_embeds_downsample shape: {}", image_embeds_downsample.shape)
-                # image_embeds_downsample = self.visual_downsample(hidden_states=inputs_downsample['pixel_values'], grid_thw=inputs_downsample['image_grid_thw'] )
-                # split_sizes = (inputs_downsample['image_grid_thw'].prod(-1) // self.visual.spatial_merge_size**2).tolist()
-                # image_embeds_downsample = torch.split(image_embeds_downsample, split_sizes)
-                # --- Feature Upsampling Logic ---
-                # If scale_factor exists and < 1.0 (meaning input was downsampled), upsample features to match input_ids placeholders
-                if hasattr(self, "scale_factor") and self.scale_factor is not None:
-                    print(
-                        f"Upsampling image features by a factor of {self.scale_factor} to match input_ids placeholders."
-                    )
-                    # upsample_ratio = 1.0 / self.scale_factor
-                    # new_embeds = []
-                    # for i, embed in enumerate(image_embeds_downsample):
-                    #     # embed shape: (seq_len, dim)
-                    #     # image_grid_thw[i] is the grid of the low-res image: (t, h, w)
-                    #     eval_logger.info("inputs_downsample['image_grid_thw'][i]: {}", inputs_downsample['image_grid_thw'][i])
-                    # eval_logger.info("image_grid_thw: {}", inputs_downsample['image_grid_thw'])
-                    t, h, w = inputs_downsample['image_grid_thw'][0]
-                    # eval_logger.info("Original image grid thw: {}", image_grid_thw)
-                    t_new, h_new, w_new = image_grid_thw[0]
-                    #     # Calculate actual H, W of feature map (considering patch merge, usually /2)
+                # eval_logger.info(f"visual 运行在这里")
+                split_sizes = (inputs_downsample['image_grid_thw'].prod(-1) // self.visual.spatial_merge_size**2).tolist()
+                image_embeds_downsample_list = torch.split(image_embeds_downsample, split_sizes)
+                upsample_ratio = 1.0 / self.scale_factor
+                new_embeds = []
+                for i, embed in enumerate(image_embeds_downsample_list):
+                    # embed shape: (seq_len, dim)
+                    # image_grid_thw[i] is the grid of the low-res image: (t, h, w)
+                    t, h, w = inputs_downsample['image_grid_thw'][i]
+                    # t_high, h_high, w_high = image_grid_thw[i]
+                    # Calculate actual H, W of feature map (considering patch merge, usually /2)
                     h_feat = h // self.visual.spatial_merge_size
                     w_feat = w // self.visual.spatial_merge_size
-
-                    h_new_feat = h_new // self.visual.spatial_merge_size
-                    w_new_feat = w_new // self.visual.spatial_merge_size
-                    #     eval_logger.info("Before upsampling: t: {}, h_feat: {}, w_feat: {}", t, h_feat, w_feat)
-
-                    #     # Reshape to (Batch*Time, Dim, H, W) for interpolation
-                    #     # Note: embed is flattened, need to view back
-                    embed = image_embeds_downsample.view(t, h_feat, w_feat, -1).permute(0, 3, 1, 2)
-                    #     eval_logger.info("Embed shape before upsampling: {}", embed.shape)
-                    #     # Calculate target size (corresponding to High Inputs size)
-                    #     new_h = int(h_feat * upsample_ratio)
-                    #     new_w = int(w_feat * upsample_ratio)
-                    #     eval_logger.info("Upsampling target size: new_h: {}, new_w: {}", new_h, new_w)
-                        # Bilinear interpolation upsampling
+                    # h_high_feat = h_high // self.visual.spatial_merge_size
+                    # w_high_feat = w_high // self.visual.spatial_merge_size
+                    # Reshape to (Batch*Time, Dim, H, W) for interpolation
+                    # Note: embed is flattened, need to view back
+                    embed = embed.view(t, h_feat, w_feat, -1).permute(0, 3, 1, 2)
+                    
+                    # Calculate target size (corresponding to High Inputs size)
+                    new_h = int(h_feat * upsample_ratio)
+                    new_w = int(w_feat * upsample_ratio)
+                    
+                    # Bilinear interpolation upsampling
                     embed = torch.nn.functional.interpolate(
-                        embed, size=(h_new_feat, w_new_feat), mode='bilinear', align_corners=False
+                        embed, size=(new_h, new_w), mode='bilinear', align_corners=False
                     )
-                    #     eval_logger.info("Embed shape after upsampling: {}", embed.shape)
-                    #     # Permute back to (Seq_len, Dim)
+                    
+                    # Permute back to (Seq_len, Dim)
                     embed = embed.permute(0, 2, 3, 1).flatten(0, 2)
-                    #     eval_logger.info("Embed shape after flattening: {}", embed.shape)
-                    #     new_embeds.append(embed)
-                    image_embeds_downsample = embed
+                    new_embeds.append(embed)
 
-                    # print("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<")
-                # time_vit_end = time.time()
-                # print("time_cost_vit", time_vit_end - time_vit_start)
-                if isinstance(image_embeds_downsample, (list, tuple)):
-                    image_embeds_downsample = torch.cat(image_embeds_downsample, dim=0)
-                # eval_logger.info("Image embeds downsample shape after concatenation: {}", image_embeds_downsample.shape)
-                image_embeds = image_embeds.to(inputs_embeds.device)
-                # eval_logger.info("Image embeds shape: {}", image_embeds.shape)
-                image_embeds_downsample = image_embeds_downsample.to(inputs_embeds.device)
-                # eval_logger.info("Image embeds downsample shape: {}", image_embeds_downsample.shape)
+                image_embeds_final = torch.cat(new_embeds, dim=0)
+                # if hasattr(self, "scale_factor") and self.scale_factor is not None:
+                #     print(
+                #         f"Upsampling image features by a factor of {self.scale_factor} to match input_ids placeholders."
+                #     )
+
+                #     t, h, w = inputs_downsample['image_grid_thw'][0]
+                #     t_new, h_new, w_new = image_grid_thw[0]
+                #     h_feat = h // self.visual.spatial_merge_size
+                #     w_feat = w // self.visual.spatial_merge_size
+                #     h_new_feat = h_new // self.visual.spatial_merge_size
+                #     w_new_feat = w_new // self.visual.spatial_merge_size
+
+                #     embed = image_embeds_downsample.view(t, h_feat, w_feat, -1).permute(0, 3, 1, 2)
+                #     embed = torch.nn.functional.interpolate(
+                #         embed, size=(h_new_feat, w_new_feat), mode='bilinear', align_corners=False
+                #     )
+                #     embed = embed.permute(0, 2, 3, 1).flatten(0, 2)
+                #     image_embeds_downsample = embed
+
+                # if isinstance(image_embeds_downsample, (list, tuple)):
+                #     image_embeds_downsample = torch.cat(image_embeds_downsample, dim=0)
+                # image_embeds = image_embeds.to(inputs_embeds.device)
+                image_embeds_final = image_embeds_final.to(inputs_embeds.device)
                 image_mask = input_ids == self.config.image_token_id
-                if self.training:
-                    inputs_embeds = inputs_embeds.clone()
+                # if self.training:
+                #     inputs_embeds = inputs_embeds.clone()
                 
-                inputs_embeds[image_mask] = (image_embeds + image_embeds_downsample) / 2.0
-                # inputs_embeds[image_mask] = image_embeds
+                # # inputs_embeds[image_mask] = (image_embeds + image_embeds_downsample) / 2.0
+                # # inputs_embeds[image_mask] = image_embeds
+                inputs_embeds[image_mask] = image_embeds_final
+            # if pixel_values is not None:
+            #     pixel_values = pixel_values.type(self.visual.get_dtype())
+                
+            #     # ✅ 获取 inputs_downsample
+            #     inputs_downsample = getattr(self, 'inputs_downsample', None)
+                
+            #     if inputs_downsample is not None:
+            #         inputs_downsample['pixel_values'] = inputs_downsample['pixel_values'].to(
+            #             device=pixel_values.device, 
+            #             dtype=self.visual.get_dtype()
+            #         )
+            #         inputs_downsample['image_grid_thw'] = inputs_downsample['image_grid_thw'].long()
+                
+            #     # ViT 处理
+            #     image_embeds, image_embeds_downsample = self.visual(
+            #         pixel_values,              # 高分辨率图像
+            #         grid_thw=image_grid_thw,   # 高分辨率 grid
+            #         inputs_downsample=inputs_downsample
+            #     )
+                
+            #     # ✅ 关键：上采样低分辨率特征到高分辨率
+            #     if inputs_downsample is not None and image_embeds_downsample is not None:
+            #         grid_low = inputs_downsample['image_grid_thw']   # 低分辨率 grid
+            #         grid_high = image_grid_thw                        # 高分辨率 grid
+                    
+            #         # 分割低分辨率特征
+            #         split_sizes_low = (grid_low.prod(-1) // self.visual.spatial_merge_size**2).long().tolist()
+            #         image_embeds_downsample_list = torch.split(image_embeds_downsample, split_sizes_low)
+                    
+            #         # 上采样到高分辨率
+            #         upsampled_embeds = []
+            #         for i, embed_low in enumerate(image_embeds_downsample_list):
+            #             # 低分辨率尺寸
+            #             t_low, h_low, w_low = grid_low[i]
+            #             h_feat_low = h_low // self.visual.spatial_merge_size
+            #             w_feat_low = w_low // self.visual.spatial_merge_size
+                        
+            #             # 高分辨率尺寸（目标）
+            #             t_high, h_high, w_high = grid_high[i]
+            #             h_feat_high = h_high // self.visual.spatial_merge_size
+            #             w_feat_high = w_high // self.visual.spatial_merge_size
+                        
+            #             # Reshape: [seq, dim] -> [t, h, w, dim] -> [t, dim, h, w]
+            #             embed_low = embed_low.view(int(t_low), int(h_feat_low), int(w_feat_low), -1).permute(0, 3, 1, 2)
+                        
+            #             # 双线性插值上采样
+            #             embed_upsampled = torch.nn.functional.interpolate(
+            #                 embed_low, 
+            #                 size=(int(h_feat_high), int(w_feat_high)), 
+            #                 mode='bilinear', 
+            #                 align_corners=False
+            #             )
+                        
+            #             # Reshape 回来: [t, dim, h, w] -> [t, h, w, dim] -> [t*h*w, dim]
+            #             embed_upsampled = embed_upsampled.permute(0, 2, 3, 1).flatten(0, 2)
+            #             upsampled_embeds.append(embed_upsampled)
+                    
+            #         # 拼接所有上采样后的特征
+            #         image_embeds_final = torch.cat(upsampled_embeds, dim=0)
+            #     else:
+            #         # 如果没有下采样数据，使用高分辨率特征
+            #         image_embeds_final = image_embeds
+                
+            #     # ✅ 填充到 inputs_embeds
+            #     image_embeds_final = image_embeds_final.to(inputs_embeds.device)
+            #     image_mask = input_ids == self.config.image_token_id
+                
+            #     # 调试日志（可选）
+            #     # eval_logger.info(f"Placeholder count: {image_mask.sum()}, Feature count: {image_embeds_final.shape[0]}")
+                
+            #     if self.training:
+            #         inputs_embeds = inputs_embeds.clone()
+                
+            #     # ✅ 使用上采样后的特征
+            #     inputs_embeds[image_mask] = image_embeds_final
+
+# >>>>>>>>>>>>>>>>< [开始添加代码] <<<<<<<<<<<<<<<
+            # 修复 Bug：如果有上采样，必须同步更新 image_grid_thw
+            # 这样后续的 get_rope_index 才能计算出正确的 3D 位置编码
+            if hasattr(self, "scale_factor") and self.scale_factor is not None and self.scale_factor < 1.0:
+                upsample_ratio = 1.0 / self.scale_factor
+                # 创建一个新的 grid 副本以避免副作用
+                new_image_grid_thw = image_grid_thw.clone()
+                # 更新 Height (索引1) 和 Width (索引2)
+                # 注意：grid 中的数值是原始 patch 数量，需要乘以倍率
+                new_image_grid_thw[:, 1] = (image_grid_thw[:, 1] * upsample_ratio).long()
+                new_image_grid_thw[:, 2] = (image_grid_thw[:, 2] * upsample_ratio).long()
+                # 将变量指向新的 grid，供下方的 get_rope_index 使用
+                # eval_logger.info(
+                #     f"Updating image_grid_thw from {image_grid_thw.tolist()} to {new_image_grid_thw.tolist()} after upsampling features."
+                # )
+                image_grid_thw = new_image_grid_thw
+            # ================= [结束添加代码] =================
                 
             if pixel_values_videos is not None:
                 pixel_values_videos = pixel_values_videos.type(self.visual.get_dtype())
@@ -2274,9 +2368,26 @@ class Qwen2VLForConditionalGeneration(Qwen2VLPreTrainedModel):
         video_grid_thw=None,
         **kwargs,
     ):
+        # eval_logger.info(f"prepare 嗨嗨嗨，运行了")
         # If we have cache: let's slice `input_ids` through `cache_position`, to keep only the unprocessed tokens
         # Exception 1: when passing input_embeds, input_ids may be missing entries
         # Exception 2: some generation methods do special slicing of input_ids, so we don't need to do it here
+        # >>>>>>>>>>>> [fix grid calculation] <<<<<<<<<<<<<<
+        # >>>>>>>>>>>> [fix grid calculation] <<<<<<<<<<<<<<
+        # 在计算 RoPE 之前，先修正 grid 尺寸
+        # if cache_position is not None and cache_position[0] != 0:
+        #     eval_logger.info(f"prepare 中 image_grid 修正运行")
+        #     if hasattr(self.model, "scale_factor") and self.model.scale_factor is not None and self.model.scale_factor < 1.0:
+        #         if image_grid_thw is not None:
+        #             upsample_ratio = 1.0 / self.model.scale_factor
+        #             new_image_grid_thw = image_grid_thw.clone()
+        #             new_image_grid_thw[:, 1] = (image_grid_thw[:, 1] * upsample_ratio).long()
+        #             new_image_grid_thw[:, 2] = (image_grid_thw[:, 2] * upsample_ratio).long()
+        #             eval_logger.info(
+        #                 f"[Generation0] Updating image_grid_thw from {image_grid_thw.tolist()} to {new_image_grid_thw.tolist()} after upsampling features."
+        #             )
+        #             image_grid_thw = new_image_grid_thw
+        # # ================= [结束添加] =================
 
         if past_key_values is not None:
             if inputs_embeds is not None:  # Exception 1

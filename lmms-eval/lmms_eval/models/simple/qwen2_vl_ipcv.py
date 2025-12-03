@@ -38,7 +38,7 @@ def configure_Sparse(model, config):
 ###################################################################
 # Qwen2_VL_DR Model
 # Parameter setting area.
-scale_factor_default: int = 2  # Define scale_factor globally for the module
+scale_factor_default: float = 0.5  # Define scale_factor globally for the module
 ###################################################################
 
 @register_model("qwen2_vl_ipcv")
@@ -86,7 +86,7 @@ class Qwen2_VL_IPCV(lmms):
 
         AS_layer=3,
         Top_K=10,
-        scale_factor: int = scale_factor_default,
+        scale_factor: float = scale_factor_default,
         **kwargs,
     ) -> None:
         super().__init__()
@@ -199,17 +199,15 @@ class Qwen2_VL_IPCV(lmms):
         for img in image_inputs:
             # 获取原始尺寸
             width, height = img.size
-
-            # eval_logger.info(f"Original image size in lanczos: {img.size}")
+            
             # 计算新尺寸
             new_width = int(width * scale_factor)
             new_height = int(height * scale_factor)
-            # eval_logger.info(f"Resized image size in lanczos before adjust: {(new_width, new_height)}")
-
+            
             # 调整为 28 的倍数
             new_width = (new_width // 28) * 28
             new_height = (new_height // 28) * 28
-            # eval_logger.info(f"Resized image size in lanczos after adjust: {(new_width, new_height)}")
+            
             # 确保至少为 28x28 (避免尺寸过小)
             new_width = max(28, new_width)
             new_height = max(28, new_height)
@@ -219,9 +217,7 @@ class Qwen2_VL_IPCV(lmms):
             resized_img = img.resize((new_width, new_height), resample=Image.Resampling.LANCZOS)
             
             downsampled_list.append(resized_img)
-        # for img in downsampled_list:
-        #     eval_logger.info(f"Downsampled image size: {img.size}")
-            # pass  # 可以在这里添加日志或其他处理
+            
         return downsampled_list
 
     def resize_to_multiple(self, image_inputs: List[Image.Image], scale_factor: float = scale_factor_default) -> List[Image.Image]:
@@ -235,26 +231,23 @@ class Qwen2_VL_IPCV(lmms):
         
         for img in image_inputs:
             width, height = img.size
-
-            # eval_logger.info(f"Original image size: {img.size}")
+            
             # Round to nearest multiple of base
             new_width = int(round(width / base) * base)
             new_height = int(round(height / base) * base)
-
-            # eval_logger.info(f"Resized image size: {(new_width, new_height)}")
+            
             # Ensure minimum size
             new_width = max(int(base), new_width)
             new_height = max(int(base), new_height)
-
-            # eval_logger.info(f"Resized image size after max: {(new_width, new_height)}")
-
+            
             if new_width != width or new_height != height:
                 resized_img = img.resize((new_width, new_height), resample=Image.Resampling.LANCZOS)
                 resized_list.append(resized_img)
             else:
                 resized_list.append(img)
-            # eval_logger.info(f"Final image size: {resized_list[-1].size}")
+            
         return resized_list
+
     @property
     def config(self):
         # return the associated transformers.AutoConfig for the given pretrained model.
@@ -371,238 +364,268 @@ class Qwen2_VL_IPCV(lmms):
                 if "<image>" in contexts[i]:
                     contexts[i] = contexts[i].replace("<image>", "")
 
-            # messages = []
-            # processed_visuals = []
-            # for i, context in enumerate(contexts):
-            #     # print(f"\033[94mtext: {context}\033[0m")
-            #     if "<image>" in context:
-            #         context = context.replace("<image>", "")
-
-            #     message = [{"role": "system", "content": "You are a helpful assistant."}]
-
-            #     if len(visuals) > 0:
-            #         visual = visuals[i] if i < len(visuals) else None
-            #         if isinstance(visual, str) and visual.endswith((".mp4", ".avi", ".mov")):  # Video file
-            #             vr = decord.VideoReader(visual)
-            #             first_frame = vr[0].asnumpy()
-            #             height, width = first_frame.shape[:2]
-            #             # max_pixels = height * width
-            #             message.append({"role": "user", "content": [{"type": "video", "video": visual, "max_pixels": self.max_pixels}, {"type": "text", "text": context}]})
-            #         elif isinstance(visual, Image.Image):  # Single image
-            #             eval_logger.info(f"[Image] 原始尺寸: {visual.size}")
-            #             # 2倍下采样
-            #             w, h = visual.size
-            #             visual = visual.resize((w // scale_factor_default, h // scale_factor_default), resample=Image.BICUBIC)
-            #             eval_logger.info(f"[Image] 下采样后尺寸: {visual.size}")
-
-            #             base64_image = visual.convert("RGB")
-            #             buffer = BytesIO()
-            #             base64_image.save(buffer, format="JPEG")
-            #             base64_bytes = base64.b64encode(buffer.getvalue())
-            #             base64_string = base64_bytes.decode("utf-8")
-            #             message.append({"role": "user", "content": [{"type": "image", "image": f"data:image/jpeg;base64,{base64_string}"}, {"type": "text", "text": context}]})
-            #         elif isinstance(visual, (list, tuple)) and all(isinstance(v, Image.Image) for v in visual):  # Multiple images
-            #             image_content = []
-            #             for v in visual:
-
-            #                 eval_logger.info(f"[Image] 原始尺寸: {v.size}")
-            #                 w, h = v.size
-            #                 v = v.resize((w // scale_factor_default, h // scale_factor_default), resample=Image.BICUBIC)
-            #                 eval_logger.info(f"[Image] 下采样后尺寸: {v.size}")
-
-            #                 base64_image = v.convert("RGB")
-            #                 buffer = BytesIO()
-            #                 base64_image.save(buffer, format="JPEG")
-            #                 base64_bytes = base64.b64encode(buffer.getvalue())
-            #                 base64_string = base64_bytes.decode("utf-8")
-            #                 image_content.append({"type": "image", "image": f"data:image/jpeg;base64,{base64_string}"})
-            #             message.append({"role": "user", "content": image_content + [{"type": "text", "text": context}]})
-            #         else:
-            #             message.append({"role": "user", "content": [{"type": "text", "text": context}]})
-            #     else:
-            #         message.append({"role": "user", "content": [{"type": "text", "text": context}]})
-
-            #     messages.append(message)
-
-            # texts = [self.processor.apply_chat_template(msg, tokenize=False, add_generation_prompt=True) for msg in messages]
-            # # text1 = texts
-            # # text2 = texts
-            # # text3 = texts
-            # image_inputs, video_inputs = process_vision_info(messages)
-            messages_orig = []   # 原图版本
-            messages_down = []   # 下采样版本
+            messages = []
             processed_visuals = []
-
             for i, context in enumerate(contexts):
+                # print(f"\033[94mtext: {context}\033[0m")
                 if "<image>" in context:
                     context = context.replace("<image>", "")
 
-                # 两套 message 都要有 system
-                msg_orig = [{"role": "system", "content": "You are a helpful assistant."}]
-                msg_down = [{"role": "system", "content": "You are a helpful assistant."}]
+                message = [{"role": "system", "content": "You are a helpful assistant."}]
 
                 if len(visuals) > 0:
                     visual = visuals[i] if i < len(visuals) else None
-
-                    # ---------- 视频：一般不下采样，两个 message 一样 ----------
-                    if isinstance(visual, str) and visual.endswith((".mp4", ".avi", ".mov")):
+                    if isinstance(visual, str) and visual.endswith((".mp4", ".avi", ".mov")):  # Video file
                         vr = decord.VideoReader(visual)
                         first_frame = vr[0].asnumpy()
                         height, width = first_frame.shape[:2]
+                        # max_pixels = height * width
+                        message.append({"role": "user", "content": [{"type": "video", "video": visual, "max_pixels": self.max_pixels}, {"type": "text", "text": context}]})
+                    elif isinstance(visual, Image.Image):  # Single image
+                        # eval_logger.info(f"[Image] 原始尺寸: {visual.size}")
+                        # # 2倍下采样
+                        # w, h = visual.size
+                        # visual = visual.resize((w // scale_factor_default, h // scale_factor_default), resample=Image.BICUBIC)
+                        # eval_logger.info(f"[Image] 下采样后尺寸: {visual.size}")
 
-                        user_content_video = [
-                            {"type": "video", "video": visual, "max_pixels": self.max_pixels},
-                            {"type": "text", "text": context},
-                        ]
-                        msg_orig.append({"role": "user", "content": user_content_video})
-                        msg_down.append({"role": "user", "content": user_content_video})
-
-                    # ---------- 单张图片 ----------
-                    elif isinstance(visual, Image.Image):
-                        # 原图版本
-                        eval_logger.info(f"[Image-ORIG] 原始尺寸: {visual.size}")
-                        base64_image_orig = visual.convert("RGB")
-                        buffer_orig = BytesIO()
-                        base64_image_orig.save(buffer_orig, format="JPEG")
-                        base64_bytes_orig = base64.b64encode(buffer_orig.getvalue())
-                        base64_string_orig = base64_bytes_orig.decode("utf-8")
-
-                        msg_orig.append({
-                            "role": "user",
-                            "content": [
-                                {"type": "image", "image": f"data:image/jpeg;base64,{base64_string_orig}"},
-                                {"type": "text", "text": context},
-                            ],
-                        })
-
-                        # 下采样版本
-                        v_ds = visual  # PIL 的 resize 会返回新对象，这里只是命名
-                        eval_logger.info(f"[Image-DOWN] 原始尺寸: {v_ds.size}")
-                        w, h = v_ds.size
-                        v_ds = v_ds.resize(
-                            (w // scale_factor_default, h // scale_factor_default),
-                            resample=Image.BICUBIC,
-                        )
-                        eval_logger.info(f"[Image-DOWN] 下采样后尺寸: {v_ds.size}")
-
-                        base64_image_down = v_ds.convert("RGB")
-                        buffer_down = BytesIO()
-                        base64_image_down.save(buffer_down, format="JPEG")
-                        base64_bytes_down = base64.b64encode(buffer_down.getvalue())
-                        base64_string_down = base64_bytes_down.decode("utf-8")
-
-                        msg_down.append({
-                            "role": "user",
-                            "content": [
-                                {"type": "image", "image": f"data:image/jpeg;base64,{base64_string_down}"},
-                                {"type": "text", "text": context},
-                            ],
-                        })
-
-                    # ---------- 多张图片 ----------
-                    elif isinstance(visual, (list, tuple)) and all(isinstance(v, Image.Image) for v in visual):
-                        image_content_orig = []
-                        image_content_down = []
-
+                        base64_image = visual.convert("RGB")
+                        buffer = BytesIO()
+                        base64_image.save(buffer, format="JPEG")
+                        base64_bytes = base64.b64encode(buffer.getvalue())
+                        base64_string = base64_bytes.decode("utf-8")
+                        message.append({"role": "user", "content": [{"type": "image", "image": f"data:image/jpeg;base64,{base64_string}"}, {"type": "text", "text": context}]})
+                    elif isinstance(visual, (list, tuple)) and all(isinstance(v, Image.Image) for v in visual):  # Multiple images
+                        image_content = []
                         for v in visual:
-                            # 原图版本
-                            eval_logger.info(f"[Multi-Image-ORIG] 原始尺寸: {v.size}")
-                            base64_image_orig = v.convert("RGB")
-                            buffer_orig = BytesIO()
-                            base64_image_orig.save(buffer_orig, format="JPEG")
-                            base64_bytes_orig = base64.b64encode(buffer_orig.getvalue())
-                            base64_string_orig = base64_bytes_orig.decode("utf-8")
-                            image_content_orig.append({
-                                "type": "image",
-                                "image": f"data:image/jpeg;base64,{base64_string_orig}",
-                            })
 
-                            # 下采样版本
-                            v_ds = v
-                            eval_logger.info(f"[Multi-Image-DOWN] 原始尺寸: {v_ds.size}")
-                            w, h = v_ds.size
-                            v_ds = v_ds.resize(
-                                (w // scale_factor_default, h // scale_factor_default),
-                                resample=Image.BICUBIC,
-                            )
-                            eval_logger.info(f"[Multi-Image-DOWN] 下采样后尺寸: {v_ds.size}")
-                            base64_image_down = v_ds.convert("RGB")
-                            buffer_down = BytesIO()
-                            base64_image_down.save(buffer_down, format="JPEG")
-                            base64_bytes_down = base64.b64encode(buffer_down.getvalue())
-                            base64_string_down = base64_bytes_down.decode("utf-8")
-                            image_content_down.append({
-                                "type": "image",
-                                "image": f"data:image/jpeg;base64,{base64_string_down}",
-                            })
+                            # eval_logger.info(f"[Image] 原始尺寸: {v.size}")
+                            # w, h = v.size
+                            # v = v.resize((w // scale_factor_default, h // scale_factor_default), resample=Image.BICUBIC)
+                            # eval_logger.info(f"[Image] 下采样后尺寸: {v.size}")
 
-                        msg_orig.append({
-                            "role": "user",
-                            "content": image_content_orig + [{"type": "text", "text": context}],
-                        })
-                        msg_down.append({
-                            "role": "user",
-                            "content": image_content_down + [{"type": "text", "text": context}],
-                        })
-
-                    # ---------- visual 类型不认识：都当纯文本 ----------
+                            base64_image = v.convert("RGB")
+                            buffer = BytesIO()
+                            base64_image.save(buffer, format="JPEG")
+                            base64_bytes = base64.b64encode(buffer.getvalue())
+                            base64_string = base64_bytes.decode("utf-8")
+                            image_content.append({"type": "image", "image": f"data:image/jpeg;base64,{base64_string}"})
+                        message.append({"role": "user", "content": image_content + [{"type": "text", "text": context}]})
                     else:
-                        msg_orig.append({"role": "user", "content": [{"type": "text", "text": context}]})
-                        msg_down.append({"role": "user", "content": [{"type": "text", "text": context}]})
+                        message.append({"role": "user", "content": [{"type": "text", "text": context}]})
                 else:
-                    # 完全没有 visuals，两套一样
-                    msg_orig.append({"role": "user", "content": [{"type": "text", "text": context}]})
-                    msg_down.append({"role": "user", "content": [{"type": "text", "text": context}]})
+                    message.append({"role": "user", "content": [{"type": "text", "text": context}]})
 
-                messages_orig.append(msg_orig)
-                messages_down.append(msg_down)
+                messages.append(message)
 
-            # ======================
-            # 这里就有两套 messages 了
-            # ======================
+            texts = [self.processor.apply_chat_template(msg, tokenize=False, add_generation_prompt=True) for msg in messages]
 
-            texts_orig = [
-                self.processor.apply_chat_template(msg, tokenize=False, add_generation_prompt=True)
-                for msg in messages_orig
-            ]
-            texts_down = [
-                self.processor.apply_chat_template(msg, tokenize=False, add_generation_prompt=True)
-                for msg in messages_down
-            ]
+            image_inputs, video_inputs = process_vision_info(messages)
 
-            image_inputs_orig, video_inputs_orig = process_vision_info(messages_orig)
-            image_inputs_down, video_inputs_down = process_vision_info(messages_down)
-            # eval_logger.info(f"image_inputs:{image_inputs}")
-            # image_inputs_downsample = self.resize_to_multiple(image_inputs, scale_factor=self.scale_factor)
-            # --- Dual-path input construction ---
-            # 1. Prepare High-res (for placeholders) and Low-res (for ViT computation) images
-            # image_inputs_high = image_inputs_downsample # Original images as High (or upsampled if original is low)
+        # pre test
+            # image_inputs = self.resize_to_multiple(image_inputs, scale_factor=self.scale_factor)
+            # # --- Dual-path input construction ---
+            # # 1. Prepare High-res (for placeholders) and Low-res (for ViT computation) images
+            # image_inputs_high = image_inputs # Original images as High (or upsampled if original is low)
             # image_inputs_low = None
             
             # if image_inputs is not None and len(image_inputs) > 0 and image_inputs[0] is not None:
-                # Generate low-res images for ViT inference
-                # image_inputs_low = self.lanczos_downsample(image_inputs, scale_factor=self.scale_factor)
+            #     # Generate low-res images for ViT inference
+            #     image_inputs_low = self.lanczos_downsample(image_inputs, scale_factor=self.scale_factor)
             # else:
-                # image_inputs_low = image_inputs
+            #     image_inputs_low = image_inputs
 
-            # 2. Generate High Inputs (get input_ids, attention_mask with correct placeholder count)
-            # These inputs contain the number of placeholders corresponding to the high-res image
-            # inputs_high = self.processor(text=texts, images=image_inputs_high, videos=video_inputs, padding=True, return_tensors="pt")
+            # # 2. Generate High Inputs (get input_ids, attention_mask with correct placeholder count)
+            # # These inputs contain the number of placeholders corresponding to the high-res image
+            # inputs_high = self.processor(text=texts, images=image_inputs_high, videos=video_inputs, padding=True, return_tensors="pt",do_resize=False)
             
-            # 3. Generate Low Inputs (get pixel_values, image_grid_thw)
-            # These inputs correspond to the small images actually sent to ViT
+            # # 3. Generate Low Inputs (get pixel_values, image_grid_thw)
+            # # These inputs correspond to the small images actually sent to ViT
             # if image_inputs_low is not image_inputs_high:
-                # inputs_low = self.processor(text=texts, images=image_inputs_low, videos=video_inputs, padding=True, return_tensors="pt")
+            #     inputs_low = self.processor(text=texts, images=image_inputs_low, videos=video_inputs, padding=True, return_tensors="pt",do_resize=False)
             # else:
-                # inputs_low = inputs_high
+            #     inputs_low = inputs_high
+
+            # # 4. Combine Inputs
+            # # Use High structure (input_ids) + Low visual data (pixel_values)
+            # inputs = inputs_high
+            # if image_inputs_low is not image_inputs_high:
+            #     inputs["pixel_values"] = inputs_low["pixel_values"]
+            #     inputs["image_grid_thw"] = inputs_low["image_grid_thw"]
+            
+
+        # wws' test code
+            ##=============================================================
+            # Construct two sets of messages: original and downsampled
+            # messages_orig = []   # 原图版本
+            # messages_down = []   # 下采样版本
+            # processed_visuals = []
+
+            # for i, context in enumerate(contexts):
+            #     if "<image>" in context:
+            #         context = context.replace("<image>", "")
+
+            #     # 两套 message 都要有 system
+            #     msg_orig = [{"role": "system", "content": "You are a helpful assistant."}]
+            #     msg_down = [{"role": "system", "content": "You are a helpful assistant."}]
+
+            #     if len(visuals) > 0:
+            #         visual = visuals[i] if i < len(visuals) else None
+
+            #         # ---------- 视频：一般不下采样，两个 message 一样 ----------
+            #         if isinstance(visual, str) and visual.endswith((".mp4", ".avi", ".mov")):
+            #             vr = decord.VideoReader(visual)
+            #             first_frame = vr[0].asnumpy()
+            #             height, width = first_frame.shape[:2]
+
+            #             user_content_video = [
+            #                 {"type": "video", "video": visual, "max_pixels": self.max_pixels},
+            #                 {"type": "text", "text": context},
+            #             ]
+            #             msg_orig.append({"role": "user", "content": user_content_video})
+            #             msg_down.append({"role": "user", "content": user_content_video})
+
+            #         # ---------- 单张图片 ----------
+            #         elif isinstance(visual, Image.Image):
+            #             # 原图版本
+            #             eval_logger.info(f"[Image-ORIG] 原始尺寸: {visual.size}")
+            #             base64_image_orig = visual.convert("RGB")
+            #             buffer_orig = BytesIO()
+            #             base64_image_orig.save(buffer_orig, format="JPEG")
+            #             base64_bytes_orig = base64.b64encode(buffer_orig.getvalue())
+            #             base64_string_orig = base64_bytes_orig.decode("utf-8")
+
+            #             msg_orig.append({
+            #                 "role": "user",
+            #                 "content": [
+            #                     {"type": "image", "image": f"data:image/jpeg;base64,{base64_string_orig}"},
+            #                     {"type": "text", "text": context},
+            #                 ],
+            #             })
+
+            #             # 下采样版本
+            #             v_ds = visual  # PIL 的 resize 会返回新对象，这里只是命名
+            #             eval_logger.info(f"[Image-DOWN] 原始尺寸: {v_ds.size}")
+            #             w, h = v_ds.size
+            #             v_ds = v_ds.resize(
+            #                 (w // scale_factor_default, h // scale_factor_default),
+            #                 resample=Image.BICUBIC,
+            #             )
+            #             eval_logger.info(f"[Image-DOWN] 下采样后尺寸: {v_ds.size}")
+
+            #             base64_image_down = v_ds.convert("RGB")
+            #             buffer_down = BytesIO()
+            #             base64_image_down.save(buffer_down, format="JPEG")
+            #             base64_bytes_down = base64.b64encode(buffer_down.getvalue())
+            #             base64_string_down = base64_bytes_down.decode("utf-8")
+
+            #             msg_down.append({
+            #                 "role": "user",
+            #                 "content": [
+            #                     {"type": "image", "image": f"data:image/jpeg;base64,{base64_string_down}"},
+            #                     {"type": "text", "text": context},
+            #                 ],
+            #             })
+
+            #         # ---------- 多张图片 ----------
+            #         elif isinstance(visual, (list, tuple)) and all(isinstance(v, Image.Image) for v in visual):
+            #             image_content_orig = []
+            #             image_content_down = []
+
+            #             for v in visual:
+            #                 # 原图版本
+            #                 eval_logger.info(f"[Multi-Image-ORIG] 原始尺寸: {v.size}")
+            #                 base64_image_orig = v.convert("RGB")
+            #                 buffer_orig = BytesIO()
+            #                 base64_image_orig.save(buffer_orig, format="JPEG")
+            #                 base64_bytes_orig = base64.b64encode(buffer_orig.getvalue())
+            #                 base64_string_orig = base64_bytes_orig.decode("utf-8")
+            #                 image_content_orig.append({
+            #                     "type": "image",
+            #                     "image": f"data:image/jpeg;base64,{base64_string_orig}",
+            #                 })
+
+            #                 # 下采样版本
+            #                 v_ds = v
+            #                 eval_logger.info(f"[Multi-Image-DOWN] 原始尺寸: {v_ds.size}")
+            #                 w, h = v_ds.size
+            #                 v_ds = v_ds.resize(
+            #                     (w // scale_factor_default, h // scale_factor_default),
+            #                     resample=Image.BICUBIC,
+            #                 )
+            #                 eval_logger.info(f"[Multi-Image-DOWN] 下采样后尺寸: {v_ds.size}")
+            #                 base64_image_down = v_ds.convert("RGB")
+            #                 buffer_down = BytesIO()
+            #                 base64_image_down.save(buffer_down, format="JPEG")
+            #                 base64_bytes_down = base64.b64encode(buffer_down.getvalue())
+            #                 base64_string_down = base64_bytes_down.decode("utf-8")
+            #                 image_content_down.append({
+            #                     "type": "image",
+            #                     "image": f"data:image/jpeg;base64,{base64_string_down}",
+            #                 })
+
+            #             msg_orig.append({
+            #                 "role": "user",
+            #                 "content": image_content_orig + [{"type": "text", "text": context}],
+            #             })
+            #             msg_down.append({
+            #                 "role": "user",
+            #                 "content": image_content_down + [{"type": "text", "text": context}],
+            #             })
+
+            #         # ---------- visual 类型不认识：都当纯文本 ----------
+            #         else:
+            #             msg_orig.append({"role": "user", "content": [{"type": "text", "text": context}]})
+            #             msg_down.append({"role": "user", "content": [{"type": "text", "text": context}]})
+            #     else:
+            #         # 完全没有 visuals，两套一样
+            #         msg_orig.append({"role": "user", "content": [{"type": "text", "text": context}]})
+            #         msg_down.append({"role": "user", "content": [{"type": "text", "text": context}]})
+
+            #     messages_orig.append(msg_orig)
+            #     messages_down.append(msg_down)
+            # # ======================
+            # # 这里就有两套 messages 了
+            # # ======================
+            # texts_orig = [
+            #     self.processor.apply_chat_template(msg, tokenize=False, add_generation_prompt=True)
+            #     for msg in messages_orig
+            # ]
+            # texts_down = [
+            #     self.processor.apply_chat_template(msg, tokenize=False, add_generation_prompt=True)
+            #     for msg in messages_down
+            # ]
+            # image_inputs_orig, video_inputs_orig = process_vision_info(messages_orig)
+            # image_inputs_down, video_inputs_down = process_vision_info(messages_down)
+            # ==============================================================================
+            # 构建双路径输入（高分辨率占位符 + 低分辨率视觉特征）
+            # ==============================================================================
+            # video_inputs = video_inputs_orig
+            # inputs = self.processor(text=texts_orig, images=image_inputs_orig, videos=video_inputs, padding=True, return_tensors="pt")
+            # inputs_downsample = self.processor(text=texts_down, images=image_inputs_down, videos=video_inputs, padding=True, return_tensors="pt")
+            # image_inputs = image_inputs_orig
+
+        # test now
+            image_inputs_resized = self.resize_to_multiple(image_inputs, scale_factor=self.scale_factor)
+
+            image_inputs_high = image_inputs_resized # Original images as High (or upsampled if original is low)
+            image_inputs_low = self.lanczos_downsample(image_inputs_resized, scale_factor=self.scale_factor)
+
+            inputs_low = self.processor(text=texts, images=image_inputs_low, videos=video_inputs, padding=True, return_tensors="pt").to(self.device)
+            inputs_high = self.processor(text=texts, images=image_inputs_high, videos=video_inputs, padding=True, return_tensors="pt").to(self.device)
+            inputs = inputs_high.copy()
+
+
+
 
             # 4. Combine Inputs
             # Use High structure (input_ids) + Low visual data (pixel_values)
             # inputs_downsample = inputs_high
 
             # if image_inputs_low is not image_inputs_high:
-                # inputs_downsample["pixel_values"] = inputs_low["pixel_values"]
-                # inputs_downsample["image_grid_thw"] = inputs_low["image_grid_thw"]
+            self.model.inputs_downsample = {
+                "pixel_values": inputs_low["pixel_values"],
+                "image_grid_thw": inputs_low["image_grid_thw"].long(),
+            }
                 # eval_logger.info(f"pixel_values shape: {inputs_low['pixel_values'].shape}, image_grid_thw shape: {inputs_low['image_grid_thw'].shape}, image_grid_thw: {inputs_low['image_grid_thw']}")
                 # Note: If videos were also downsampled, video_grid_thw would need replacement too
             
@@ -610,14 +633,15 @@ class Qwen2_VL_IPCV(lmms):
             # 将 inputs_downsample 存储到模型实例的属性中，避免通过参数传递
             # ==============================================================================
             # self.model.inputs_downsample = inputs_downsample
-            # ==============================================================================
 
-            # ==============================================================================
-            # 创建 model_inputs，过滤掉 inputs_downsample（因为它现在通过属性传递）
-            # ==============================================================================
-            # model_inputs = {k: v for k, v in inputs.items() if k != "inputs_downsample"}
-            # ==============================================================================
-            video_inputs = video_inputs_orig
+
+
+            
+
+
+            
+            
+
             if video_inputs is not None and len(video_inputs) > 0 and video_inputs[0] is not None:
                 total_frames = video_inputs[0].shape[0]
                 indices = np.linspace(0, total_frames - 1, self.max_num_frames, dtype=int)
@@ -625,15 +649,6 @@ class Qwen2_VL_IPCV(lmms):
                 if total_frames - 1 not in indices:
                     indices = np.append(indices, total_frames - 1)
                 video_inputs[0] = video_inputs[0][indices]
-            inputs = self.processor(text=texts_orig, images=image_inputs_orig, videos=video_inputs, padding=True, return_tensors="pt")
-            inputs_downsample = self.processor(text=texts_down, images=image_inputs_down, videos=video_inputs, padding=True, return_tensors="pt")
-            self.model.inputs_downsample = inputs_downsample
-
-            image_inputs = image_inputs_orig
-            
-            # for key, value in inputs_downsample.items():
-            #     new_key = f"{key}_downsample"
-            #     inputs[new_key] = value
 
             if self.device_map == "auto":
                 inputs = inputs.to("cuda")
