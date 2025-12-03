@@ -50,7 +50,7 @@ for task in "${tasks[@]}"; do
 
           torch_dtype=float16
 
-          GPU=0
+          GPU=3
 
           # log file name
           log_file="${output_path}/run_detail.log"

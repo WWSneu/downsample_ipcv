@@ -2136,54 +2136,64 @@ class Qwen2VLForConditionalGeneration(Qwen2VLPreTrainedModel):
                     )
                 
                 image_embeds, image_embeds_downsample = self.visual(pixel_values, grid_thw=image_grid_thw, inputs_downsample=inputs_downsample)
-                eval_logger.info("image_embeds shape: {}", image_embeds.shape)
-                eval_logger.info("image_embeds_downsample shape: {}", image_embeds_downsample.shape)
+                # eval_logger.info("image_embeds shape: {}", image_embeds.shape)
+                # eval_logger.info("image_embeds_downsample shape: {}", image_embeds_downsample.shape)
                 # image_embeds_downsample = self.visual_downsample(hidden_states=inputs_downsample['pixel_values'], grid_thw=inputs_downsample['image_grid_thw'] )
-                split_sizes = (inputs_downsample['image_grid_thw'].prod(-1) // self.visual.spatial_merge_size**2).tolist()
-                image_embeds_downsample = torch.split(image_embeds_downsample, split_sizes)
+                # split_sizes = (inputs_downsample['image_grid_thw'].prod(-1) // self.visual.spatial_merge_size**2).tolist()
+                # image_embeds_downsample = torch.split(image_embeds_downsample, split_sizes)
                 # --- Feature Upsampling Logic ---
                 # If scale_factor exists and < 1.0 (meaning input was downsampled), upsample features to match input_ids placeholders
-                if hasattr(self, "scale_factor") and self.scale_factor is not None and self.scale_factor < 1.0:
+                if hasattr(self, "scale_factor") and self.scale_factor is not None:
                     print(
-                        f"Upsampling image features by a factor of {1.0 / self.scale_factor} to match input_ids placeholders."
+                        f"Upsampling image features by a factor of {self.scale_factor} to match input_ids placeholders."
                     )
-                    upsample_ratio = 1.0 / self.scale_factor
-                    new_embeds = []
-                    for i, embed in enumerate(image_embeds_downsample):
-                        # embed shape: (seq_len, dim)
-                        # image_grid_thw[i] is the grid of the low-res image: (t, h, w)
-                        eval("inputs_downsample['image_grid_thw'][i]:", inputs_downsample['image_grid_thw'][i])
-                        t, h, w = inputs_downsample['image_grid_thw'][i]
-                        
-                        # Calculate actual H, W of feature map (considering patch merge, usually /2)
-                        h_feat = h // self.visual.spatial_merge_size
-                        w_feat = w // self.visual.spatial_merge_size
-                        
-                        # Reshape to (Batch*Time, Dim, H, W) for interpolation
-                        # Note: embed is flattened, need to view back
-                        embed = embed.view(t, h_feat, w_feat, -1).permute(0, 3, 1, 2)
-                        
-                        # Calculate target size (corresponding to High Inputs size)
-                        new_h = int(h_feat * upsample_ratio)
-                        new_w = int(w_feat * upsample_ratio)
-                        
+                    # upsample_ratio = 1.0 / self.scale_factor
+                    # new_embeds = []
+                    # for i, embed in enumerate(image_embeds_downsample):
+                    #     # embed shape: (seq_len, dim)
+                    #     # image_grid_thw[i] is the grid of the low-res image: (t, h, w)
+                    #     eval_logger.info("inputs_downsample['image_grid_thw'][i]: {}", inputs_downsample['image_grid_thw'][i])
+                    # eval_logger.info("image_grid_thw: {}", inputs_downsample['image_grid_thw'])
+                    t, h, w = inputs_downsample['image_grid_thw'][0]
+                    # eval_logger.info("Original image grid thw: {}", image_grid_thw)
+                    t_new, h_new, w_new = image_grid_thw[0]
+                    #     # Calculate actual H, W of feature map (considering patch merge, usually /2)
+                    h_feat = h // self.visual.spatial_merge_size
+                    w_feat = w // self.visual.spatial_merge_size
+
+                    h_new_feat = h_new // self.visual.spatial_merge_size
+                    w_new_feat = w_new // self.visual.spatial_merge_size
+                    #     eval_logger.info("Before upsampling: t: {}, h_feat: {}, w_feat: {}", t, h_feat, w_feat)
+
+                    #     # Reshape to (Batch*Time, Dim, H, W) for interpolation
+                    #     # Note: embed is flattened, need to view back
+                    embed = image_embeds_downsample.view(t, h_feat, w_feat, -1).permute(0, 3, 1, 2)
+                    #     eval_logger.info("Embed shape before upsampling: {}", embed.shape)
+                    #     # Calculate target size (corresponding to High Inputs size)
+                    #     new_h = int(h_feat * upsample_ratio)
+                    #     new_w = int(w_feat * upsample_ratio)
+                    #     eval_logger.info("Upsampling target size: new_h: {}, new_w: {}", new_h, new_w)
                         # Bilinear interpolation upsampling
-                        embed = torch.nn.functional.interpolate(
-                            embed, size=(new_h, new_w), mode='bilinear', align_corners=False
-                        )
-                        
-                        # Permute back to (Seq_len, Dim)
-                        embed = embed.permute(0, 2, 3, 1).flatten(0, 2)
-                        new_embeds.append(embed)
-                    image_embeds_downsample = new_embeds
+                    embed = torch.nn.functional.interpolate(
+                        embed, size=(h_new_feat, w_new_feat), mode='bilinear', align_corners=False
+                    )
+                    #     eval_logger.info("Embed shape after upsampling: {}", embed.shape)
+                    #     # Permute back to (Seq_len, Dim)
+                    embed = embed.permute(0, 2, 3, 1).flatten(0, 2)
+                    #     eval_logger.info("Embed shape after flattening: {}", embed.shape)
+                    #     new_embeds.append(embed)
+                    image_embeds_downsample = embed
+
                     # print("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<")
                 # time_vit_end = time.time()
                 # print("time_cost_vit", time_vit_end - time_vit_start)
                 if isinstance(image_embeds_downsample, (list, tuple)):
                     image_embeds_downsample = torch.cat(image_embeds_downsample, dim=0)
+                # eval_logger.info("Image embeds downsample shape after concatenation: {}", image_embeds_downsample.shape)
                 image_embeds = image_embeds.to(inputs_embeds.device)
+                # eval_logger.info("Image embeds shape: {}", image_embeds.shape)
                 image_embeds_downsample = image_embeds_downsample.to(inputs_embeds.device)
-
+                # eval_logger.info("Image embeds downsample shape: {}", image_embeds_downsample.shape)
                 image_mask = input_ids == self.config.image_token_id
                 if self.training:
                     inputs_embeds = inputs_embeds.clone()
