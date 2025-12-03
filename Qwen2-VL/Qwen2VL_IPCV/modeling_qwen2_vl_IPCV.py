@@ -1322,8 +1322,8 @@ class IPCV_ViT(Qwen2VisionTransformerPretrainedModel):
 
                 # ----------------------------------------
         # hidden_states_final = (hidden_states_pkg['hidden_states'] + hidden_states_downsample) /2.0
-        print(f"hidden_states_pkg : {hidden_states_pkg}, hidden_states_downsample: {hidden_states_downsample}")
-        print(f"hidden_states_pkg['hidden_states'] shape: {hidden_states_pkg['hidden_states'].shape}, hidden_states_downsample['hidden_states'] shape: {hidden_states_downsample['hidden_states'].shape}")
+        # print(f"hidden_states_pkg : {hidden_states_pkg}, hidden_states_downsample: {hidden_states_downsample}")
+        # print(f"hidden_states_pkg['hidden_states'] shape: {hidden_states_pkg['hidden_states'].shape}, hidden_states_downsample['hidden_states'] shape: {hidden_states_downsample['hidden_states'].shape}")
         return self.merger(hidden_states_pkg['hidden_states']), self.merger(hidden_states_downsample['hidden_states'])
         
     
@@ -2114,7 +2114,7 @@ class Qwen2VLForConditionalGeneration(Qwen2VLPreTrainedModel):
         # 从模型属性中获取 inputs_downsample
         # ==============================================================================
         inputs_downsample = getattr(self, 'inputs_downsample', None)
-        print("DEBUG: inputs_downsample content:", inputs_downsample)
+        # print("DEBUG: inputs_downsample content:", inputs_downsample)
         # ==============================================================================
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (

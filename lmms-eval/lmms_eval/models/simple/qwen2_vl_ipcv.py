@@ -38,7 +38,7 @@ def configure_Sparse(model, config):
 ###################################################################
 # Qwen2_VL_DR Model
 # Parameter setting area.
-scale_factor_default: int = 4  # Define scale_factor globally for the module
+scale_factor_default: int = 2  # Define scale_factor globally for the module
 ###################################################################
 
 @register_model("qwen2_vl_ipcv")
@@ -200,16 +200,16 @@ class Qwen2_VL_IPCV(lmms):
             # 获取原始尺寸
             width, height = img.size
 
-            eval_logger.info(f"Original image size in lanczos: {img.size}")
+            # eval_logger.info(f"Original image size in lanczos: {img.size}")
             # 计算新尺寸
             new_width = int(width * scale_factor)
             new_height = int(height * scale_factor)
-            eval_logger.info(f"Resized image size in lanczos before adjust: {(new_width, new_height)}")
+            # eval_logger.info(f"Resized image size in lanczos before adjust: {(new_width, new_height)}")
 
             # 调整为 28 的倍数
             new_width = (new_width // 28) * 28
             new_height = (new_height // 28) * 28
-            eval_logger.info(f"Resized image size in lanczos after adjust: {(new_width, new_height)}")
+            # eval_logger.info(f"Resized image size in lanczos after adjust: {(new_width, new_height)}")
             # 确保至少为 28x28 (避免尺寸过小)
             new_width = max(28, new_width)
             new_height = max(28, new_height)
@@ -219,8 +219,8 @@ class Qwen2_VL_IPCV(lmms):
             resized_img = img.resize((new_width, new_height), resample=Image.Resampling.LANCZOS)
             
             downsampled_list.append(resized_img)
-        for img in downsampled_list:
-            eval_logger.info(f"Downsampled image size: {img.size}")
+        # for img in downsampled_list:
+        #     eval_logger.info(f"Downsampled image size: {img.size}")
             # pass  # 可以在这里添加日志或其他处理
         return downsampled_list
 
@@ -236,24 +236,24 @@ class Qwen2_VL_IPCV(lmms):
         for img in image_inputs:
             width, height = img.size
 
-            eval_logger.info(f"Original image size: {img.size}")
+            # eval_logger.info(f"Original image size: {img.size}")
             # Round to nearest multiple of base
             new_width = int(round(width / base) * base)
             new_height = int(round(height / base) * base)
 
-            eval_logger.info(f"Resized image size: {(new_width, new_height)}")
+            # eval_logger.info(f"Resized image size: {(new_width, new_height)}")
             # Ensure minimum size
             new_width = max(int(base), new_width)
             new_height = max(int(base), new_height)
 
-            eval_logger.info(f"Resized image size after max: {(new_width, new_height)}")
+            # eval_logger.info(f"Resized image size after max: {(new_width, new_height)}")
 
             if new_width != width or new_height != height:
                 resized_img = img.resize((new_width, new_height), resample=Image.Resampling.LANCZOS)
                 resized_list.append(resized_img)
             else:
                 resized_list.append(img)
-            eval_logger.info(f"Final image size: {resized_list[-1].size}")
+            # eval_logger.info(f"Final image size: {resized_list[-1].size}")
         return resized_list
     @property
     def config(self):
