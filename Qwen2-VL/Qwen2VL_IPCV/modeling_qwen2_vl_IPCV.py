@@ -2277,23 +2277,23 @@ class Qwen2VLForConditionalGeneration(Qwen2VLPreTrainedModel):
             #     # ✅ 使用上采样后的特征
             #     inputs_embeds[image_mask] = image_embeds_final
 
-# >>>>>>>>>>>>>>>>< [开始添加代码] <<<<<<<<<<<<<<<
-            # 修复 Bug：如果有上采样，必须同步更新 image_grid_thw
-            # 这样后续的 get_rope_index 才能计算出正确的 3D 位置编码
-            if hasattr(self, "scale_factor") and self.scale_factor is not None and self.scale_factor < 1.0:
-                upsample_ratio = 1.0 / self.scale_factor
-                # 创建一个新的 grid 副本以避免副作用
-                new_image_grid_thw = image_grid_thw.clone()
-                # 更新 Height (索引1) 和 Width (索引2)
-                # 注意：grid 中的数值是原始 patch 数量，需要乘以倍率
-                new_image_grid_thw[:, 1] = (image_grid_thw[:, 1] * upsample_ratio).long()
-                new_image_grid_thw[:, 2] = (image_grid_thw[:, 2] * upsample_ratio).long()
-                # 将变量指向新的 grid，供下方的 get_rope_index 使用
-                # eval_logger.info(
-                #     f"Updating image_grid_thw from {image_grid_thw.tolist()} to {new_image_grid_thw.tolist()} after upsampling features."
-                # )
-                image_grid_thw = new_image_grid_thw
-            # ================= [结束添加代码] =================
+# # >>>>>>>>>>>>>>>>< [开始添加代码] <<<<<<<<<<<<<<<
+#             # 修复 Bug：如果有上采样，必须同步更新 image_grid_thw
+#             # 这样后续的 get_rope_index 才能计算出正确的 3D 位置编码
+#             if hasattr(self, "scale_factor") and self.scale_factor is not None and self.scale_factor < 1.0:
+#                 upsample_ratio = 1.0 / self.scale_factor
+#                 # 创建一个新的 grid 副本以避免副作用
+#                 new_image_grid_thw = image_grid_thw.clone()
+#                 # 更新 Height (索引1) 和 Width (索引2)
+#                 # 注意：grid 中的数值是原始 patch 数量，需要乘以倍率
+#                 new_image_grid_thw[:, 1] = (image_grid_thw[:, 1] * upsample_ratio).long()
+#                 new_image_grid_thw[:, 2] = (image_grid_thw[:, 2] * upsample_ratio).long()
+#                 # 将变量指向新的 grid，供下方的 get_rope_index 使用
+#                 # eval_logger.info(
+#                 #     f"Updating image_grid_thw from {image_grid_thw.tolist()} to {new_image_grid_thw.tolist()} after upsampling features."
+#                 # )
+#                 image_grid_thw = new_image_grid_thw
+#             # ================= [结束添加代码] =================
                 
             if pixel_values_videos is not None:
                 pixel_values_videos = pixel_values_videos.type(self.visual.get_dtype())

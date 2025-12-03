@@ -220,25 +220,50 @@ class Qwen2_VL_IPCV(lmms):
             
         return downsampled_list
 
+    # def resize_to_multiple(self, image_inputs: List[Image.Image], scale_factor: float = scale_factor_default) -> List[Image.Image]:
+    #     """
+    #     Resize images to be multiples of 14/scale_factor.
+    #     This ensures that downsampled images (by scale_factor) will be multiples of 14.
+    #     """
+    #     resized_list = []
+    #     # base should be the target block size in high-res space
+    #     base = 28.0 / scale_factor
+        
+    #     for img in image_inputs:
+    #         width, height = img.size
+            
+    #         # Round to nearest multiple of base
+    #         new_width = int(round(width / base) * base)
+    #         new_height = int(round(height / base) * base)
+            
+    #         # Ensure minimum size
+    #         new_width = max(int(base), new_width)
+    #         new_height = max(int(base), new_height)
+            
+    #         if new_width != width or new_height != height:
+    #             resized_img = img.resize((new_width, new_height), resample=Image.Resampling.LANCZOS)
+    #             resized_list.append(resized_img)
+    #         else:
+    #             resized_list.append(img)
+            
+    #     return resized_list
     def resize_to_multiple(self, image_inputs: List[Image.Image], scale_factor: float = scale_factor_default) -> List[Image.Image]:
         """
-        Resize images to be multiples of 14/scale_factor.
-        This ensures that downsampled images (by scale_factor) will be multiples of 14.
+        Resize images so that after downsampling by scale_factor, dimensions are multiples of 28.
+        High-res dimensions will be multiples of 28/scale_factor.
         """
         resized_list = []
-        # base should be the target block size in high-res space
-        base = 28.0 / scale_factor
+        
+        # 高分辨率的基准尺寸
+        # 例如 scale_factor=0.5, high_base=56, 下采样后就是 28 的倍数
+        high_base = int(28 / scale_factor)
         
         for img in image_inputs:
             width, height = img.size
             
-            # Round to nearest multiple of base
-            new_width = int(round(width / base) * base)
-            new_height = int(round(height / base) * base)
-            
-            # Ensure minimum size
-            new_width = max(int(base), new_width)
-            new_height = max(int(base), new_height)
+            # Round to nearest multiple of high_base
+            new_width = max(high_base, int(round(width / high_base) * high_base))
+            new_height = max(high_base, int(round(height / high_base) * high_base))
             
             if new_width != width or new_height != height:
                 resized_img = img.resize((new_width, new_height), resample=Image.Resampling.LANCZOS)
@@ -247,7 +272,6 @@ class Qwen2_VL_IPCV(lmms):
                 resized_list.append(img)
             
         return resized_list
-
     @property
     def config(self):
         # return the associated transformers.AutoConfig for the given pretrained model.
@@ -610,17 +634,34 @@ class Qwen2_VL_IPCV(lmms):
             image_inputs_high = image_inputs_resized # Original images as High (or upsampled if original is low)
             image_inputs_low = self.lanczos_downsample(image_inputs_resized, scale_factor=self.scale_factor)
 
-            inputs_low = self.processor(text=texts, images=image_inputs_low, videos=video_inputs, padding=True, return_tensors="pt").to(self.device)
-            inputs_high = self.processor(text=texts, images=image_inputs_high, videos=video_inputs, padding=True, return_tensors="pt").to(self.device)
+            inputs_low = self.processor(text=texts, images=image_inputs_low, videos=video_inputs, padding=True, return_tensors="pt",do_resize=False).to(self.device)
+            inputs_high = self.processor(text=texts, images=image_inputs_high, videos=video_inputs, padding=True, return_tensors="pt",do_resize=False).to(self.device)
             inputs = inputs_high.copy()
+            
+            # eval_logger.info(f"inputs_high['image_grid_thw']: {inputs_high['image_grid_thw']}")
+            # eval_logger.info(f"inputs_low['image_grid_thw']: {inputs_low['image_grid_thw']}")
+            # eval_logger.info(f"inputs_high placeholder count: {(inputs_high['input_ids'] == 151655).sum().item()}")
+            # eval_logger.info(f"inputs_low placeholder count: {(inputs_low['input_ids'] == 151655).sum().item()}")
 
+            # # 验证计算
+            # grid_high = inputs_high['image_grid_thw'][0]
+            # grid_low = inputs_low['image_grid_thw'][0]
+            # merge_size = 2  # spatial_merge_size
+            # expected_high_tokens = (grid_high[0] * grid_high[1] * grid_high[2] // (merge_size ** 2)).item()
+            # expected_low_tokens = (grid_low[0] * grid_low[1] * grid_low[2] // (merge_size ** 2)).item()
+            # expected_upsampled = int(expected_low_tokens * (1.0 / self.scale_factor) ** 2)
+
+            # eval_logger.info(f"Expected high tokens: {expected_high_tokens}")
+            # eval_logger.info(f"Expected low tokens: {expected_low_tokens}")
+            # eval_logger.info(f"Expected upsampled tokens: {expected_upsampled}")
 
 
 
             # 4. Combine Inputs
             # Use High structure (input_ids) + Low visual data (pixel_values)
             # inputs_downsample = inputs_high
-
+            # inputs["pixel_values"] = inputs_low["pixel_values"]
+            # inputs["image_grid_thw"] = inputs_low["image_grid_thw"]
             # if image_inputs_low is not image_inputs_high:
             self.model.inputs_downsample = {
                 "pixel_values": inputs_low["pixel_values"],
